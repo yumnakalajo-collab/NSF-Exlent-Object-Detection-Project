@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scope — live object detection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0e0f;
+    --panel: #121617;
+    --panel-border: #232a2c;
+    --ink: #edefec;
+    --ink-dim: #8b9594;
+    --signal: #5effb0;
+    --signal-dim: #2c5d44;
+    --idle: #ffb13c;
+    --error: #ff6b5e;
+    --font-ui: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    min-height: 100%;
+  }
+
+  body {
+    display: flex;
+    justify-content: center;
+    padding: clamp(16px, 4vw, 48px);
+  }
+
+  .app {
+    width: 100%;
+    max-width: 1080px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+    gap: 28px;
+    align-items: start;
+  }
+
+  @media (max-width: 800px) {
+    .app { grid-template-columns: 1fr; }
+  }
+
+  header.masthead {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .masthead .wordmark {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 0.02em;
+  }
+  .masthead .wordmark span { color: var(--signal); }
+
+  .masthead .project {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink-dim);
+  }
+
+  .viewfinder-wrap {
+    position: relative;
+  }
+
+  .viewfinder {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: #000;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--panel-border);
+    isolation: isolate;
+  }
+
+  .viewfinder video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(1);
+  }
+
+  .viewfinder canvas#overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .corner {
+    position: absolute;
+    width: 34px;
+    height: 34px;
+    border: 2px solid var(--ink-dim);
+    opacity: 0.55;
+    z-index: 3;
+    transition: border-color 0.4s ease, opacity 0.4s ease;
+  }
+  .corner.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
+  .corner.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
+  .corner.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
+  .corner.br { bottom: 14px; right: 14px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
+
+  .viewfinder.is-live .corner {
+    border-color: var(--signal);
+    opacity: 0.9;
+  }
+
+  .scanline {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--signal), transparent);
+    opacity: 0;
+    z-index: 2;
+  }
+  .viewfinder.is-live .scanline {
+    opacity: 0.5;
+    animation: sweep 2s linear infinite;
+  }
+  @keyframes sweep {
+    0% { top: 6%; }
+    50% { top: 94%; }
+    100% { top: 6%; }
+  }
+
+  .placeholder-state {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 4;
+    background: radial-gradient(circle at 50% 40%, rgba(94,255,176,0.07), transparent 60%);
+    padding: 24px;
+    text-align: center;
+  }
+
+  .viewfinder.is-live .placeholder-state { display: none; }
+
+  .placeholder-state p {
+    color: var(--ink-dim);
+    max-width: 320px;
+    font-size: 14px;
+    margin: 0;
+  }
+
+  button.primary {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #0b0e0f;
+    background: var(--signal);
+    border: none;
+    border-radius: 8px;
+    padding: 12px 22px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  button.primary:hover { box-shadow: 0 0 0 3px rgba(94,255,176,0.25); }
+  button.primary:active { transform: scale(0.97); }
+  button.primary:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+  button.ghost {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  button.ghost:hover { color: var(--ink); border-color: var(--ink-dim); }
+  button.ghost:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  #switch-camera {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 5;
+    background: rgba(11,14,15,0.7);
+    backdrop-filter: blur(4px);
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--ink-dim);
+  }
+
+  .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--ink-dim);
+    flex-shrink: 0;
+  }
+  .status-dot.scanning { background: var(--signal); box-shadow: 0 0 8px var(--signal); animation: pulse 1.6s ease-in-out infinite; }
+  .status-dot.idle { background: var(--idle); }
+  .status-dot.error { background: var(--error); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .permission-note {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--error);
+  }
+
+  aside.side {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .panel h2 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-dim);
+    margin: 0 0 12px 0;
+    font-weight: 600;
+  }
+
+  .readout-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--panel-border);
+    font-family: var(--font-mono);
+  }
+  .readout-row:last-child { border-bottom: none; }
+
+  .readout-label {
+    font-size: 15px;
+    color: var(--ink);
+    text-transform: capitalize;
+  }
+
+  .readout-confidence {
+    font-size: 14px;
+    color: var(--signal);
+    font-weight: 600;
+  }
+
+  .readout-empty {
+    font-family: var(--font-mono);
+    color: var(--idle);
+    font-size: 14px;
+    padding: 10px 0;
+  }
+
+  .qr-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+  }
+
+  #qr-code {
+    background: #fff;
+    padding: 10px;
+    border-radius: 10px;
+    line-height: 0;
+  }
+
+  .qr-panel p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-dim);
+    max-width: 220px;
+  }
+
+  .chat-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
+
+  .chat-empty {
+    font-size: 13px;
+    color: var(--ink-dim);
+    padding: 4px 0;
+  }
+
+  .chat-msg {
+    font-size: 14px;
+    line-height: 1.45;
+    padding: 9px 12px;
+    border-radius: 10px;
+    max-width: 92%;
+    word-wrap: break-word;
+  }
+  .chat-msg.user {
+    align-self: flex-end;
+    background: var(--signal-dim);
+    color: var(--ink);
+    border-radius: 10px 10px 2px 10px;
+  }
+  .chat-msg.model {
+    align-self: flex-start;
+    background: #1a1f20;
+    border: 1px solid var(--panel-border);
+    color: var(--ink);
+    border-radius: 10px 10px 10px 2px;
+  }
+  .chat-msg.error {
+    align-self: flex-start;
+    background: rgba(255,107,94,0.12);
+    border: 1px solid rgba(255,107,94,0.4);
+    color: var(--error);
+    border-radius: 10px;
+  }
+  .chat-msg.pending {
+    color: var(--ink-dim);
+    font-style: italic;
+  }
+
+  .chat-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  .chat-input {
+    flex: 1;
+    background: #0e1112;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    padding: 10px 12px;
+  }
+  .chat-input:focus {
+    outline: none;
+    border-color: var(--signal-dim);
+  }
+  .chat-input::placeholder { color: var(--ink-dim); }
+
+  .chat-send {
+    flex-shrink: 0;
+    width: 38px;
+    border-radius: 8px;
+    border: none;
+    background: var(--signal);
+    color: #0b0e0f;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .chat-send:hover { box-shadow: 0 0 0 3px rgba(94,255,176,0.25); }
+  .chat-send:disabled { opacity: 0.5; cursor: default; }
+  .chat-send:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  footer.note {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="masthead">
+      <div class="wordmark">SCOPE<span>·</span>DETECT</div>
+      <div class="project" id="project-name">Loading model…</div>
+    </header>
+
+    <main>
+      <div class="viewfinder-wrap">
+        <div class="viewfinder" id="viewfinder">
+          <video id="video" muted playsinline autoplay></video>
+          <canvas id="overlay"></canvas>
+          <div class="scanline"></div>
+          <span class="corner tl"></span>
+          <span class="corner tr"></span>
+          <span class="corner bl"></span>
+          <span class="corner br"></span>
+
+          <div class="placeholder-state">
+            <p>Turn on a camera to start scanning. Use the camera on this device, or scan the QR code to switch to your phone.</p>
+            <button class="primary" id="start-camera">Start camera</button>
+          </div>
+
+          <button class="ghost" id="switch-camera" hidden>Flip camera</button>
+        </div>
+
+        <div class="status-bar">
+          <span class="status-dot idle" id="status-dot"></span>
+          <span id="status-text">Loading model…</span>
+        </div>
+        <p class="permission-note" id="permission-note" hidden></p>
+      </div>
+    </main>
+
+    <aside class="side">
+      <div class="panel">
+        <h2>Detections</h2>
+        <div id="readout">
+          <div class="readout-empty">No object detected</div>
+        </div>
+      </div>
+
+      <div class="panel qr-panel">
+        <h2 style="align-self:flex-start;">Switch device</h2>
+        <div id="qr-code"></div>
+        <p>Scan with your phone to open this scanner there and use its camera instead.</p>
+      </div>
+
+      <div class="panel chat-panel">
+        <h2>Ask about this</h2>
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-empty">Ask a question — it can see what's currently detected.</div>
+        </div>
+        <form id="chat-form" class="chat-form">
+          <input
+            type="text"
+            id="chat-input"
+            class="chat-input"
+            placeholder="Ask a question…"
+            autocomplete="off"
+          />
+          <button type="submit" class="chat-send" id="chat-send" aria-label="Send">→</button>
+        </form>
+      </div>
+    </aside>
+
+    <footer class="note">Runs entirely in the browser — frames never leave this device.</footer>
+  </div>
+
+  <canvas id="capture-canvas" style="display:none;"></canvas>
+
+  <script src="edge-impulse-standalone.js"></script>
+  <script src="classifier.js"></script>
+  <script src="app.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>
