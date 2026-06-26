@@ -3,13 +3,23 @@
   const formEl = document.getElementById('chat-form');
   const inputEl = document.getElementById('chat-input');
   const sendBtn = document.getElementById('chat-send');
+  const statusToggle = document.getElementById('chat-status-toggle');
+  const statusText = document.getElementById('chat-status-text');
 
-  const history = []; // { role: 'user' | 'model', text: string }
+  const history = []; 
   let sending = false;
+  let isOnline = true;
 
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  }
+  statusToggle.addEventListener('click', () => {
+    isOnline = !isOnline;
+    if (isOnline) {
+      statusToggle.classList.remove('offline');
+      statusText.textContent = 'ONLINE';
+    } else {
+      statusToggle.classList.add('offline');
+      statusText.textContent = 'OFFLINE';
+    }
+  });
 
   function clearEmptyState() {
     const empty = messagesEl.querySelector('.chat-empty');
@@ -41,8 +51,17 @@
     sendBtn.disabled = true;
 
     appendMessage('user', text);
-    const pending = appendPending();
 
+    if (!isOnline) {
+      setTimeout(() => {
+        appendMessage('error', 'Cannot process request: Chatbot system is currently offline.');
+        sending = false;
+        sendBtn.disabled = false;
+      }, 400);
+      return;
+    }
+
+    const pending = appendPending();
     const detections = Array.isArray(window.__latestDetections) ? window.__latestDetections : [];
     const selectedObject = window.__selectedObject || '';
 
