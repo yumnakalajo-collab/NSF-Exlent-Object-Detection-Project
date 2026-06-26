@@ -100,18 +100,28 @@ from the model via `getProperties()`), and runs it through your classifier.
 
 If multiple objects are detected in the same frame, the app always focuses
 on just one — the highest-confidence detection — for the readout, mineral
-panel, and chat context. Other boxes still get a faint outline on the video
-so you can see what else was in frame, but only the focused object drives
-the rest of the UI. Detections below 40% confidence are treated as no
-detection, to avoid flickering on borderline noise — adjust
-`CONFIDENCE_FLOOR` in `app.js` if you want it more or less sensitive.
 
-## Sources for the mineral data
 
-Component-use facts and mining-region shares are drawn from public reporting:
-USGS Mineral Commodity Summaries and the 2025 List of Critical Minerals,
-SFA (Oxford)'s critical minerals in electronics series, and Visual
-Capitalist / MINING.COM breakdowns of smartphone metals. Figures (e.g.
-"~76% of cobalt from the DRC") reflect recent reporting and will drift over
-time as production shifts — treat them as illustrative rather than
-real-time statistics.
+## Troubleshooting: 405 error on the chatbot
+
+If `/api/chat` returns a 405 even though the browser is correctly sending a
+POST request, this has been seen as a real Cloudflare Pages routing quirk —
+Cloudflare's edge has occasionally treated the function's path as a static
+asset request before it ever reaches your function code. `functions/api/chat.js`
+now exports a catch-all `onRequest` handler (in addition to `onRequestPost`)
+specifically to work around this, and answers GET requests with a small
+diagnostic message so you can confirm the endpoint is alive by visiting
+`/api/chat` directly in a browser. If you still get a 405 after redeploying
+this version, the function likely isn't being deployed at all — double-check
+the `functions` folder structure made it into your deploy.
+
+## Troubleshooting: "Couldn't load mineral data right now"
+
+This message now only appears if `minerals-data.js` (or `world-map.js`)
+failed to load in the browser — for example, if the file wasn't included
+in a deploy, or 404s for some other reason. Open the browser console (F12)
+when this happens; `app.js` logs a specific error there pointing at which
+file is missing. Previously, this case had no error handling at all, so if
+you saw this message before this update, it likely means one of these files
+didn't make it into that deployment — double check your uploaded folder
+includes every `.js` file, not just `index.html` and `app.js`.

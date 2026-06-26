@@ -23,7 +23,7 @@
   };
 
   const INTERVAL_MS = 2000;
-  const CONFIDENCE_FLOOR = 0.4;
+  const CONFIDENCE_FLOOR = 0.6;
 
   let classifier = null;
   let modelInputWidth = 96;
@@ -223,10 +223,33 @@
   }
 
   function showMineralPanel(label) {
-    const keys = window.getMineralsForLabel(label);
+    els.mineralPanel.hidden = false;
+
+    if (typeof window.getMineralsForLabel !== 'function' || !window.MINERALS) {
+      els.mineralList.innerHTML = `<div class="readout-empty">Couldn't load mineral data right now. Check that minerals-data.js is loaded.</div>`;
+      els.mapPanel.hidden = true;
+      console.error('minerals-data.js did not load: window.getMineralsForLabel / window.MINERALS is missing.');
+      return;
+    }
+
+    let keys;
+    try {
+      keys = window.getMineralsForLabel(label);
+    } catch (err) {
+      console.error('getMineralsForLabel threw:', err);
+      els.mineralList.innerHTML = `<div class="readout-empty">Couldn't load mineral data right now.</div>`;
+      els.mapPanel.hidden = true;
+      return;
+    }
+
     const minerals = window.MINERALS;
 
-    els.mineralPanel.hidden = false;
+    if (!Array.isArray(keys) || keys.length === 0) {
+      els.mineralList.innerHTML = `<div class="readout-empty">No known mineral data for "${escapeHtml(label)}" yet.</div>`;
+      els.mapPanel.hidden = true;
+      return;
+    }
+
     els.mineralList.innerHTML = keys
       .map((key) => {
         const m = minerals[key];
@@ -243,7 +266,7 @@
             <p>${escapeHtml(m.summary)}</p>
             <div class="field-label">Used in this device for</div>
             <p class="dim">${escapeHtml(m.componentImpact)}</p>
-            <div class="field-label">Spectral profile (illustrative)</div>
+            <div class="field-label">Spectral lines</div>
             ${renderSpectralChart(m)}
             <button class="mineral-link" data-detail="${key}">View mining regions &amp; full profile →</button>
           </div>
@@ -271,21 +294,54 @@
   }
 
   function renderSpectralChart(mineral) {
-    const peaks = (mineral.spectral && mineral.spectral.peaks) || [0.3, 0.5, 0.4, 0.6, 0.3, 0.5];
+    const lines = (mineral.spectral && mineral.spectral.lines) || [];
+    const color = (mineral.spectral && mineral.spectral.hue) || mineral.color;
+    const source = (mineral.spectral && mineral.spectral.source) || '';
+
+    if (!lines.length) {
+      return `<p class="dim" style="font-size:12px;">No spectral line data available.</p>`;
+    }
+
+    // Plot against a fixed UV–visible–near-IR axis (200–800 nm) so the
+    // position of each line on the chart reflects its real wavelength,
+    // not an arbitrary index.
+    const AXIS_MIN = 200;
+    const AXIS_MAX = 800;
     const w = 280;
     const h = 56;
-    const step = w / (peaks.length - 1);
-    const points = peaks.map((p, i) => `${(i * step).toFixed(1)},${(h - p * h).toFixed(1)}`).join(' ');
-    const color = (mineral.spectral && mineral.spectral.hue) || mineral.color;
+    const baseline = h - 4;
+
+    const barsHtml = lines
+      .map((line) => {
+        const x = ((line.nm - AXIS_MIN) / (AXIS_MAX - AXIS_MIN)) * w;
+        const barHeight = Math.max(2, line.intensity * (h - 10));
+        const y = baseline - barHeight;
+        return `<rect x="${(x - 1.5).toFixed(1)}" y="${y.toFixed(1)}" width="3" height="${barHeight.toFixed(1)}" fill="${color}" opacity="0.9" rx="1"/>`;
+      })
+      .join('');
+
+    const labelsHtml = lines
+      .map((line) => {
+        const x = ((line.nm - AXIS_MIN) / (AXIS_MAX - AXIS_MIN)) * w;
+        return `<text x="${x.toFixed(1)}" y="${h - 1}" font-size="7" text-anchor="middle" fill="${color}" opacity="0.75">${line.nm}</text>`;
+      })
+      .join('');
 
     return `
-      <svg class="spectral-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-        <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
-      </svg>`;
+      <svg class="spectral-chart" viewBox="0 0 ${w} ${h + 9}" preserveAspectRatio="xMidYMid meet">
+        <line x1="0" y1="${baseline}" x2="${w}" y2="${baseline}" stroke="${color}" stroke-width="0.5" opacity="0.3"/>
+        ${barsHtml}
+      </svg>
+      <p class="dim" style="font-size:11px; margin-top:4px;">${escapeHtml(source)} (nm = wavelength in nanometers)</p>`;
   }
 
   function renderMap(keys) {
     if (!keys.length) {
+      els.mapPanel.hidden = true;
+      return;
+    }
+    if (typeof window.renderWorldMap !== 'function') {
+      console.error('world-map.js did not load: window.renderWorldMap is missing.');
       els.mapPanel.hidden = true;
       return;
     }
@@ -306,7 +362,7 @@
       <p>${escapeHtml(m.componentImpact)}</p>
       <div class="field-label">Mining note</div>
       <p>${escapeHtml(m.miningNote)}</p>
-      <div class="field-label">Spectral profile (illustrative)</div>
+      <div class="field-label">Spectral lines</div>
       ${renderSpectralChart(m)}
     `;
     els.detailPanel.hidden = false;

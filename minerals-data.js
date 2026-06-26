@@ -1,7 +1,10 @@
 // Mineral reference data for Scope · Detect.
 // Facts are drawn from public USGS / industry reporting (see README sources).
-// Spectral "profiles" are simple illustrative curves for visual interest only —
-// they are not laboratory reflectance data.
+// Spectral "profiles" use real published wavelengths (NIST Atomic Spectra
+// Database, standard AAS analytical lines, NIOSH methods — see each
+// mineral's `spectral.source`), plotted as a simple line/intensity chart.
+// They are not full laboratory reflectance curves, but the wavelength
+// positions themselves are real, sourced values, not invented ones.
 
 const MINERALS = {
   cobalt: {
@@ -19,7 +22,17 @@ const MINERALS = {
       { country: 'Indonesia', lat: -2.5, lng: 118.0, share: 'fast-growing secondary source' },
       { country: 'Russia', lat: 61.5, lng: 90.0, share: 'minor producer' },
     ],
-    spectral: { peaks: [0.18, 0.62, 0.35, 0.78, 0.4, 0.22], hue: '#5b6ee8' },
+    spectral: {
+      lines: [
+        { nm: 240.7, intensity: 1.0 },
+        { nm: 304.4, intensity: 0.55 },
+        { nm: 346.6, intensity: 0.4 },
+        { nm: 347.4, intensity: 0.35 },
+        { nm: 391.0, intensity: 0.25 },
+      ],
+      source: 'Primary atomic-absorption line at 240.7 nm (cobalt hollow-cathode lamp), with secondary lines per standard AAS references.',
+      hue: '#5b6ee8',
+    },
   },
   lithium: {
     name: 'Lithium',
@@ -37,7 +50,16 @@ const MINERALS = {
       { country: 'China', lat: 32.0, lng: 95.0, share: 'major producer + refiner' },
       { country: 'Argentina', lat: -24.2, lng: -66.9, share: 'Lithium Triangle' },
     ],
-    spectral: { peaks: [0.5, 0.2, 0.85, 0.3, 0.15, 0.6], hue: '#5effb0' },
+    spectral: {
+      lines: [
+        { nm: 460.3, intensity: 0.25 },
+        { nm: 497.2, intensity: 0.2 },
+        { nm: 610.4, intensity: 0.45 },
+        { nm: 670.8, intensity: 1.0 },
+      ],
+      source: 'Flame emission lines; 670.8 nm is the strong red line that gives lithium flames their crimson color.',
+      hue: '#5effb0',
+    },
   },
   tantalum: {
     name: 'Tantalum',
@@ -54,7 +76,16 @@ const MINERALS = {
       { country: 'Rwanda', lat: -1.9, lng: 29.9, share: 'major producer' },
       { country: 'Brazil', lat: -15.8, lng: -47.9, share: 'significant producer' },
     ],
-    spectral: { peaks: [0.3, 0.55, 0.2, 0.4, 0.7, 0.35], hue: '#ffb13c' },
+    spectral: {
+      lines: [
+        { nm: 265.33, intensity: 1.0 },
+        { nm: 265.66, intensity: 0.7 },
+        { nm: 271.47, intensity: 1.0 },
+        { nm: 293.36, intensity: 0.7 },
+      ],
+      source: 'Strongest neutral-tantalum (Ta I) emission lines per the NIST Atomic Spectra Database.',
+      hue: '#ffb13c',
+    },
   },
   tin: {
     name: 'Tin',
@@ -72,7 +103,14 @@ const MINERALS = {
       { country: 'Democratic Republic of Congo', lat: -6.5, lng: 27.0, share: 'significant producer' },
       { country: 'Peru', lat: -9.2, lng: -75.0, share: 'significant producer' },
     ],
-    spectral: { peaks: [0.45, 0.3, 0.6, 0.25, 0.5, 0.18], hue: '#9b8cf0' },
+    spectral: {
+      lines: [
+        { nm: 224.6, intensity: 1.0 },
+        { nm: 235.5, intensity: 0.6 },
+      ],
+      source: 'Standard tin AAS analytical wavelengths (224.6 nm primary, 235.5 nm secondary).',
+      hue: '#9b8cf0',
+    },
   },
   tungsten: {
     name: 'Tungsten',
@@ -89,7 +127,11 @@ const MINERALS = {
       { country: 'Vietnam', lat: 21.0, lng: 105.8, share: 'secondary producer' },
       { country: 'Russia', lat: 56.0, lng: 105.0, share: 'secondary producer' },
     ],
-    spectral: { peaks: [0.2, 0.4, 0.75, 0.5, 0.3, 0.65], hue: '#ff6b5e' },
+    spectral: {
+      lines: [{ nm: 255.1, intensity: 1.0 }],
+      source: 'Standard tungsten AAS analytical wavelength (NIOSH Method 7074).',
+      hue: '#ff6b5e',
+    },
   },
   gold: {
     name: 'Gold',
@@ -107,7 +149,14 @@ const MINERALS = {
       { country: 'Russia', lat: 60.0, lng: 100.0, share: 'major producer' },
       { country: 'South Africa', lat: -26.2, lng: 28.0, share: 'historic major producer' },
     ],
-    spectral: { peaks: [0.7, 0.45, 0.3, 0.6, 0.4, 0.55], hue: '#ffd75e' },
+    spectral: {
+      lines: [
+        { nm: 242.8, intensity: 1.0 },
+        { nm: 267.6, intensity: 0.5 },
+      ],
+      source: 'Standard gold AAS analytical wavelengths (242.8 nm primary, 267.6 nm secondary).',
+      hue: '#ffd75e',
+    },
   },
   rare_earths: {
     name: 'Rare Earth Elements',
@@ -125,7 +174,16 @@ const MINERALS = {
       { country: 'Myanmar', lat: 21.9, lng: 95.9, share: 'significant producer' },
       { country: 'Australia', lat: -28.0, lng: 122.0, share: 'significant producer' },
     ],
-    spectral: { peaks: [0.55, 0.3, 0.65, 0.4, 0.7, 0.25], hue: '#e85bd0' },
+    spectral: {
+      lines: [
+        { nm: 430.4, intensity: 0.6 },
+        { nm: 521.0, intensity: 0.45 },
+        { nm: 575.0, intensity: 0.5 },
+        { nm: 740.0, intensity: 0.4 },
+      ],
+      source: 'Characteristic emission/absorption peaks of neodymium, the rare earth used in magnets — shown as a representative example since "rare earths" covers 17 distinct elements.',
+      hue: '#e85bd0',
+    },
   },
 };
 
