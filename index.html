@@ -6,672 +6,9 @@
 <title>Scope — live object detection</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<style>
-  :root {
-    /* Mid-tone, warm stone/clay palette — darker and lower-contrast than
-       the previous pass (which read as too bright/washed out), but still
-       clearly a light theme, not a dark one. Malachite green stays the
-       primary accent; copper stays reserved for map pins / spectral bars. */
-    --bg-top: #cfc6b4;
-    --bg-bottom: #b9ac95;
-    --panel: #e4dcc8;
-    --panel-border: #c7bca3;
-    --ink: #3a3226;
-    --ink-dim: #6e6353;
-    --signal: #1f6e52;
-    --signal-soft: #d8e8df;
-    --signal-dim: #154b39;
-    --accent-copper: #a35c1c;
-    --copper-soft: #ecdcc4;
-    --idle: #a35c1c;
-    --error: #9c4035;
-    --error-soft: #ecd9d2;
-    --font-ui: 'Inter', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-    --shadow-soft: 0 4px 18px rgba(30, 25, 18, 0.12);
-    --shadow-lift: 0 8px 28px rgba(30, 25, 18, 0.18);
-  }
-
-  * { box-sizing: border-box; }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    color: var(--ink);
-    font-family: var(--font-ui);
-    min-height: 100%;
-  }
-
-  body {
-    display: flex;
-    justify-content: center;
-    padding: clamp(16px, 4vw, 48px);
-    background: linear-gradient(165deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
-    background-attachment: fixed;
-  }
-
-  .app {
-    width: 100%;
-    max-width: 1080px;
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
-    gap: 28px;
-    align-items: start;
-  }
-
-  @media (max-width: 800px) {
-    .app { grid-template-columns: 1fr; }
-  }
-
-  header.masthead {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 4px;
-  }
-
-  .masthead .wordmark {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 22px;
-    letter-spacing: 0.02em;
-    color: var(--ink);
-  }
-  .masthead .wordmark span { color: var(--signal); }
-
-  .masthead .project {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: var(--ink-dim);
-  }
-
-  .viewfinder-wrap {
-    position: relative;
-  }
-
-  .viewfinder {
-    position: relative;
-    aspect-ratio: 1 / 1;
-    background: #0e0c09;
-    border-radius: 20px;
-    overflow: hidden;
-    border: 1px solid var(--panel-border);
-    box-shadow: var(--shadow-lift);
-    isolation: isolate;
-  }
-
-  .viewfinder video {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scaleX(1);
-  }
-
-  .viewfinder canvas#overlay {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-
-  .corner {
-    position: absolute;
-    width: 34px;
-    height: 34px;
-    border: 2px solid var(--ink-dim);
-    opacity: 0.55;
-    z-index: 3;
-    transition: border-color 0.4s ease, opacity 0.4s ease;
-  }
-  .corner.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; border-radius: 6px 0 0 0; }
-  .corner.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; border-radius: 0 6px 0 0; }
-  .corner.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; border-radius: 0 0 0 6px; }
-  .corner.br { bottom: 14px; right: 14px; border-left: none; border-top: none; border-radius: 0 0 6px 0; }
-
-  .viewfinder.is-live .corner {
-    border-color: var(--signal);
-    opacity: 0.9;
-  }
-
-  .scanline {
-    position: absolute;
-    left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--signal), transparent);
-    opacity: 0;
-    z-index: 2;
-  }
-  .viewfinder.is-live .scanline {
-    opacity: 0.5;
-    animation: sweep 2s linear infinite;
-  }
-  @keyframes sweep {
-    0% { top: 6%; }
-    50% { top: 94%; }
-    100% { top: 6%; }
-  }
-
-  .placeholder-state {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    z-index: 4;
-    background: radial-gradient(circle at 50% 40%, rgba(31,110,82,0.18), transparent 60%);
-    padding: 24px;
-    text-align: center;
-  }
-
-  .viewfinder.is-live .placeholder-state { display: none; }
-
-  .placeholder-state p {
-    color: #d8d2c4;
-    max-width: 320px;
-    font-size: 14px;
-    margin: 0;
-  }
-
-  button.primary {
-    font-family: var(--font-mono);
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #fbf8f1;
-    background: var(--signal);
-    border: none;
-    border-radius: 10px;
-    padding: 12px 22px;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(31,110,82,0.35);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-  }
-  button.primary:hover { background: var(--signal-dim); box-shadow: 0 6px 18px rgba(31,110,82,0.4); }
-  button.primary:active { transform: scale(0.97); }
-  button.primary:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
-
-  button.ghost {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: var(--ink-dim);
-    background: rgba(255,253,248,0.9);
-    border: 1px solid var(--panel-border);
-    border-radius: 8px;
-    padding: 8px 14px;
-    cursor: pointer;
-  }
-  button.ghost:hover { color: var(--ink); border-color: var(--signal); }
-  button.ghost:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
-
-  #switch-camera {
-    position: absolute;
-    top: 14px;
-    right: 14px;
-    z-index: 5;
-    background: rgba(14,12,9,0.55);
-    color: #efe9da;
-    border-color: rgba(255,255,255,0.18);
-    backdrop-filter: blur(4px);
-  }
-  #switch-camera:hover {
-    color: #fff;
-    border-color: var(--signal);
-  }
-
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 14px;
-    font-family: var(--font-mono);
-    font-size: 13px;
-    color: var(--ink-dim);
-  }
-
-  .status-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--ink-dim);
-    flex-shrink: 0;
-  }
-  .status-dot.scanning { background: var(--signal); box-shadow: 0 0 8px rgba(31,110,82,0.55); animation: pulse 1.6s ease-in-out infinite; }
-  .status-dot.idle { background: var(--idle); }
-  .status-dot.error { background: var(--error); }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.35; }
-  }
-
-  .permission-note {
-    margin-top: 10px;
-    font-size: 13px;
-    color: var(--error);
-    background: var(--error-soft);
-    border-radius: 8px;
-    padding: 8px 12px;
-  }
-
-  aside.side {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: var(--shadow-soft);
-  }
-
-  .panel h2 {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--ink-dim);
-    margin: 0 0 12px 0;
-    font-weight: 600;
-  }
-
-  .readout-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--panel-border);
-    font-family: var(--font-mono);
-  }
-  .readout-row:last-child { border-bottom: none; }
-
-  .readout-label {
-    font-size: 15px;
-    color: var(--ink);
-    text-transform: capitalize;
-  }
-
-  .readout-confidence {
-    font-size: 14px;
-    color: var(--signal);
-    font-weight: 600;
-  }
-
-  .readout-empty {
-    font-family: var(--font-mono);
-    color: var(--idle);
-    font-size: 14px;
-    padding: 10px 0;
-  }
-
-  .qr-panel {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    text-align: center;
-  }
-
-  #qr-code {
-    background: #fff;
-    padding: 10px;
-    border-radius: 12px;
-    border: 1px solid var(--panel-border);
-    line-height: 0;
-  }
-
-  .qr-panel p {
-    margin: 0;
-    font-size: 13px;
-    color: var(--ink-dim);
-    max-width: 220px;
-  }
-
-  .chat-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .chat-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: -2px;
-  }
-
-  .chat-panel-header h2 {
-    margin: 0;
-  }
-
-  .chat-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--ink-dim);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .chat-status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--ink-dim);
-    flex-shrink: 0;
-  }
-  .chat-status-dot.online {
-    background: var(--signal);
-    box-shadow: 0 0 6px rgba(31,110,82,0.6);
-  }
-  .chat-status-dot.checking {
-    background: var(--idle);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
-  .chat-status-dot.offline {
-    background: var(--error);
-  }
-
-  .chat-messages {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    max-height: 260px;
-    overflow-y: auto;
-    padding-right: 2px;
-  }
-
-  .chat-empty {
-    font-size: 13px;
-    color: var(--ink-dim);
-    padding: 4px 0;
-  }
-
-  .chat-msg {
-    font-size: 14px;
-    line-height: 1.45;
-    padding: 9px 12px;
-    border-radius: 12px;
-    max-width: 92%;
-    word-wrap: break-word;
-  }
-  .chat-msg.user {
-    align-self: flex-end;
-    background: var(--signal);
-    color: #fbf8f1;
-    border-radius: 12px 12px 2px 12px;
-  }
-  .chat-msg.model {
-    align-self: flex-start;
-    background: #d6cbb3;
-    border: 1px solid var(--panel-border);
-    color: var(--ink);
-    border-radius: 12px 12px 12px 2px;
-  }
-  .chat-msg.error {
-    align-self: flex-start;
-    background: var(--error-soft);
-    border: 1px solid rgba(156,64,53,0.35);
-    color: var(--error);
-    border-radius: 12px;
-  }
-
-  .chat-msg.typing-bubble {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 12px 14px;
-  }
-
-  .typing-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--ink-dim);
-    opacity: 0.5;
-    animation: typingBounce 1.1s ease-in-out infinite;
-  }
-  .typing-dot:nth-child(2) { animation-delay: 0.15s; }
-  .typing-dot:nth-child(3) { animation-delay: 0.3s; }
-
-  @keyframes typingBounce {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-4px); opacity: 0.9; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .typing-dot { animation: none; opacity: 0.6; }
-    .status-dot.scanning,
-    .chat-status-dot.checking,
-    .viewfinder.is-live .scanline { animation: none; }
-  }
-
-  .chat-form {
-    display: flex;
-    gap: 8px;
-  }
-
-  .chat-input {
-    flex: 1;
-    background: #ede5d3;
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    color: var(--ink);
-    font-family: var(--font-ui);
-    font-size: 14px;
-    padding: 10px 12px;
-  }
-  .chat-input:focus {
-    outline: none;
-    border-color: var(--signal);
-    box-shadow: 0 0 0 3px var(--signal-soft);
-  }
-  .chat-input::placeholder { color: var(--ink-dim); }
-
-  .chat-send {
-    flex-shrink: 0;
-    width: 38px;
-    border-radius: 10px;
-    border: none;
-    background: var(--signal);
-    color: #fbf8f1;
-    font-size: 16px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background 0.15s ease, box-shadow 0.15s ease;
-  }
-  .chat-send:hover { background: var(--signal-dim); box-shadow: 0 4px 12px rgba(31,110,82,0.3); }
-  .chat-send:disabled { opacity: 0.5; cursor: default; }
-  .chat-send:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
-
-  .mineral-status {
-    font-family: var(--font-ui);
-    text-transform: none;
-    letter-spacing: normal;
-    font-size: 12px;
-    color: var(--ink-dim);
-    font-weight: 400;
-  }
-
-  .mineral-item {
-    border-bottom: 1px solid var(--panel-border);
-  }
-  .mineral-item:last-child {
-    border-bottom: none;
-  }
-
-  .mineral-toggle {
-    width: 100%;
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    background: none;
-    border: none;
-    color: var(--ink);
-    font-family: var(--font-mono);
-    font-size: 15px;
-    padding: 10px 0;
-    cursor: pointer;
-    text-align: left;
-  }
-  .mineral-toggle:focus-visible {
-    outline: 2px solid var(--signal);
-    outline-offset: 2px;
-  }
-
-  .mineral-name {
-    flex: 1;
-    text-transform: capitalize;
-  }
-
-  .mineral-symbol {
-    font-size: 12px;
-    color: var(--signal-dim);
-    background: var(--signal-soft);
-    padding: 1px 6px;
-    border-radius: 4px;
-  }
-
-  .mineral-chevron {
-    color: var(--ink-dim);
-    font-size: 11px;
-    transition: transform 0.15s ease;
-  }
-  .mineral-toggle[aria-expanded="true"] .mineral-chevron {
-    transform: rotate(180deg);
-    color: var(--signal);
-  }
-
-  .mineral-detail {
-    padding: 0 0 16px;
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--ink-dim);
-  }
-
-  .mineral-detail p {
-    margin: 0 0 8px;
-  }
-
-  .mineral-detail strong {
-    color: var(--ink);
-  }
-
-  .mineral-locations {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--ink-dim);
-    margin-top: 8px !important;
-  }
-
-  .mineral-funfact {
-    margin-top: 10px !important;
-    padding-top: 10px;
-    border-top: 1px dashed var(--panel-border);
-  }
-
-  .mineral-map {
-    display: block;
-    width: 100%;
-    height: auto;
-    margin-bottom: 4px;
-    border-radius: 8px;
-  }
-
-  .mineral-map-bg {
-    fill: #d6cbb3;
-  }
-
-  .mineral-map-grid {
-    stroke: var(--panel-border);
-    stroke-width: 1;
-  }
-
-  .mineral-pin circle:first-child {
-    fill: var(--accent-copper);
-  }
-
-  .mineral-pin-ring {
-    fill: none;
-    stroke: var(--accent-copper);
-    stroke-width: 1.5;
-    opacity: 0.5;
-  }
-
-  .mineral-spectral {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px dashed var(--panel-border);
-  }
-
-  .mineral-spectral > strong {
-    display: block;
-    margin-bottom: 6px;
-    color: var(--ink);
-  }
-
-  .spectral-chart {
-    display: block;
-    width: 100%;
-    height: auto;
-    margin: 4px 0 6px;
-  }
-
-  .spectral-bg {
-    fill: #d6cbb3;
-  }
-
-  .spectral-band {
-    fill: var(--accent-copper);
-    opacity: 0.18;
-  }
-
-  .spectral-peak-line {
-    stroke: var(--ink);
-    stroke-width: 1.5;
-  }
-
-  .spectral-peak-dot {
-    fill: var(--ink);
-  }
-
-  .spectral-numbers {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--ink-dim);
-    margin: 0 0 2px !important;
-  }
-
-  .spectral-note {
-    font-size: 12.5px;
-    color: var(--ink-dim);
-    margin: 0 !important;
-  }
-
-  footer.note {
-    grid-column: 1 / -1;
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--ink-dim);
-    text-align: center;
-  }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
@@ -708,18 +45,16 @@
     </main>
 
     <aside class="side">
-      <div class="panel">
-        <h2>Detections</h2>
+      <div class="panel" id="detection-panel">
+        <h2>Detection</h2>
         <div id="readout">
           <div class="readout-empty">No object detected</div>
         </div>
       </div>
 
-      <div class="panel mineral-panel">
-        <h2>Minerals inside <span id="mineral-status" class="mineral-status"></span></h2>
-        <div id="mineral-list">
-          <div class="readout-empty">Point the camera at a device to see its minerals.</div>
-        </div>
+      <div class="panel" id="mineral-panel" hidden>
+        <h2>Critical minerals inside</h2>
+        <div id="mineral-list"></div>
       </div>
 
       <div class="panel qr-panel">
@@ -729,15 +64,19 @@
       </div>
 
       <div class="panel chat-panel">
-        <div class="chat-panel-header">
-          <h2>Ask about this</h2>
+        <div class="chat-header">
+          <h2 class="chat-title">Ask about this</h2>
           <span class="chat-status">
-            <span class="chat-status-dot checking" id="chat-status-dot"></span>
-            <span id="chat-status-text">Connecting…</span>
+            <span class="chat-status-dot"></span>
+            Online
           </span>
         </div>
         <div id="chat-messages" class="chat-messages">
           <div class="chat-empty">Ask a question — it can see what's currently detected.</div>
+        </div>
+        <div id="chat-typing" class="chat-typing" hidden>
+          <span class="typing-dots"><span></span><span></span><span></span></span>
+          <span class="typing-label" id="typing-label">Thinking…</span>
         </div>
         <form id="chat-form" class="chat-form">
           <input
@@ -752,6 +91,19 @@
       </div>
     </aside>
 
+    <section class="panel map-panel" id="map-panel" hidden>
+      <h2>Where these minerals come from</h2>
+      <div class="map-wrap">
+        <svg id="world-map" viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <div class="map-legend" id="map-legend"></div>
+    </section>
+
+    <section class="panel detail-panel" id="detail-panel" hidden>
+      <button class="ghost detail-close" id="detail-close">← Back</button>
+      <div id="detail-content"></div>
+    </section>
+
     <footer class="note">Runs entirely in the browser — frames never leave this device.</footer>
   </div>
 
@@ -759,6 +111,8 @@
 
   <script src="edge-impulse-standalone.js"></script>
   <script src="classifier.js"></script>
+  <script src="minerals-data.js"></script>
+  <script src="world-map.js"></script>
   <script src="app.js"></script>
   <script src="chat.js"></script>
 </body>

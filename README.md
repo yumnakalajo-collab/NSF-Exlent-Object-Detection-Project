@@ -9,13 +9,30 @@ Everything runs client-side. No frames are uploaded anywhere.
 
 ## Files
 
-- `index.html` — the page itself (camera viewfinder, status readout, QR panel, chat panel)
-- `app.js` — camera handling, capture loop, drawing detection boxes
-- `chat.js` — chat UI: sends questions + current detections to `/api/chat`
+- `index.html` — the page itself (camera viewfinder, status readout, QR panel, mineral panel, world map, chat panel)
+- `styles.css` — all visual styling
+- `app.js` — camera handling, capture loop, single-object focus, mineral panel + map wiring
+- `chat.js` — chat UI: typing indicator, status pacing, sends questions + current detection to `/api/chat`
 - `classifier.js` — thin wrapper around the Edge Impulse WASM module
+- `minerals-data.js` — critical mineral facts, per-device mineral mapping, mining region coordinates
+- `world-map.js` — renders the SVG world map with mining-region pins
 - `edge-impulse-standalone.js` / `.wasm` — your exported model
 - `functions/api/chat.js` — Cloudflare Pages Function that calls Gemini server-side (keeps your API key private)
-- `server.py` — a simple local dev server (sets the right MIME type for `.wasm`)
+- `server.py` — a simple local dev server (sets the right MIME type for `.wasm` and `.css`)
+
+## Critical minerals panel
+
+When the scanner locks onto an object, a panel below the camera shows the
+critical minerals typically found inside that type of device — what each
+one is used for, which specific component relies on it, and a short note on
+where it's mined. Tapping a mineral expands a small illustrative "spectral
+profile" chart (a stylized visual, not lab-measured spectral data) and a
+link to a fuller detail view with mining regions plotted on a world map.
+
+Mineral-to-device mappings and mining-region data live in `minerals-data.js`.
+To add a new device type or adjust which minerals map to it, edit
+`DEVICE_MINERAL_MAP` in that file. To add a new mineral, add an entry to
+the `MINERALS` object with the same shape as the existing ones.
 
 ## Setting up the AI chat (Gemini)
 
@@ -80,7 +97,21 @@ where you can use the phone's camera instead.
 Every 2 seconds, the app grabs the current video frame, center-crops it to a
 square, resizes it to the model's expected input size (read automatically
 from the model via `getProperties()`), and runs it through your classifier.
-Detected boxes are drawn over the video, and labels with confidence scores
-show up in the side panel. Detections below 40% confidence are treated as
-no detection, to avoid flickering on borderline noise — adjust
+
+If multiple objects are detected in the same frame, the app always focuses
+on just one — the highest-confidence detection — for the readout, mineral
+panel, and chat context. Other boxes still get a faint outline on the video
+so you can see what else was in frame, but only the focused object drives
+the rest of the UI. Detections below 40% confidence are treated as no
+detection, to avoid flickering on borderline noise — adjust
 `CONFIDENCE_FLOOR` in `app.js` if you want it more or less sensitive.
+
+## Sources for the mineral data
+
+Component-use facts and mining-region shares are drawn from public reporting:
+USGS Mineral Commodity Summaries and the 2025 List of Critical Minerals,
+SFA (Oxford)'s critical minerals in electronics series, and Visual
+Capitalist / MINING.COM breakdowns of smartphone metals. Figures (e.g.
+"~76% of cobalt from the DRC") reflect recent reporting and will drift over
+time as production shifts — treat them as illustrative rather than
+real-time statistics.
