@@ -3,23 +3,28 @@
   const formEl = document.getElementById('chat-form');
   const inputEl = document.getElementById('chat-input');
   const sendBtn = document.getElementById('chat-send');
-  const statusToggle = document.getElementById('chat-status-toggle');
-  const statusText = document.getElementById('chat-status-text');
+  const statusEl = document.getElementById('chat-status');
 
-  const history = []; 
+  const history = []; // { role: 'user' | 'model', text: string }
   let sending = false;
-  let isOnline = true;
 
-  statusToggle.addEventListener('click', () => {
-    isOnline = !isOnline;
-    if (isOnline) {
-      statusToggle.classList.remove('offline');
-      statusText.textContent = 'ONLINE';
+  function setChatStatus(state, text) {
+    if (!statusEl) return;
+    statusEl.className = `agent-status ${state}`;
+    statusEl.textContent = text;
+  }
+
+  function updateOnlineStatus() {
+    if (navigator.onLine) {
+      setChatStatus('online', 'Online');
     } else {
-      statusToggle.classList.add('offline');
-      statusText.textContent = 'OFFLINE';
+      setChatStatus('offline', 'Offline');
     }
-  });
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
 
   function clearEmptyState() {
     const empty = messagesEl.querySelector('.chat-empty');
@@ -40,7 +45,7 @@
     clearEmptyState();
     const div = document.createElement('div');
     div.className = 'chat-msg model pending';
-    div.textContent = 'Analyzing context...';
+    div.textContent = 'Thinking…';
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return div;
@@ -49,19 +54,11 @@
   async function sendMessage(text) {
     sending = true;
     sendBtn.disabled = true;
+    setChatStatus('online', 'Thinking');
 
     appendMessage('user', text);
-
-    if (!isOnline) {
-      setTimeout(() => {
-        appendMessage('error', 'Execution halted: Simulator chatbot toggle is set to OFFLINE.');
-        sending = false;
-        sendBtn.disabled = false;
-      }, 300);
-      return;
-    }
-
     const pending = appendPending();
+
     const detections = Array.isArray(window.__latestDetections) ? window.__latestDetections : [];
     const selectedObject = window.__selectedObject || '';
 
@@ -81,21 +78,27 @@
 
       if (!res.ok || data.error) {
         pending.remove();
-        appendMessage('error', data.error || `Telemetry request failed (${res.status})`);
+        appendMessage('error', data.error || `Request failed (${res.status})`);
+        setChatStatus('offline', 'Server unavailable');
         return;
       }
 
       pending.remove();
       appendMessage('model', data.reply);
+      setChatStatus('online', 'Online');
 
       history.push({ role: 'user', text });
       history.push({ role: 'model', text: data.reply });
     } catch (err) {
       pending.remove();
-      appendMessage('error', 'Network failure interfacing server node: ' + (err.message || err));
-    } finaly {
+      appendMessage('error', 'Could not reach the server: ' + (err.message || err));
+      setChatStatus('offline', 'Offline');
+    } finally {
       sending = false;
       sendBtn.disabled = false;
+      if (navigator.onLine && statusEl && statusEl.textContent === 'Thinking') {
+        setChatStatus('online', 'Online');
+      }
     }
   }
 
@@ -109,4 +112,8 @@
     inputEl.value = '';
     sendMessage(text);
   });
+
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
 })();
