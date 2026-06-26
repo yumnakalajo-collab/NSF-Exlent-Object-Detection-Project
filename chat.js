@@ -40,7 +40,7 @@
     clearEmptyState();
     const div = document.createElement('div');
     div.className = 'chat-msg model pending';
-    div.textContent = 'Thinking…';
+    div.textContent = 'Analyzing context...';
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return div;
@@ -54,10 +54,10 @@
 
     if (!isOnline) {
       setTimeout(() => {
-        appendMessage('error', 'Cannot process request: Chatbot system is currently offline.');
+        appendMessage('error', 'Execution halted: Simulator chatbot toggle is set to OFFLINE.');
         sending = false;
         sendBtn.disabled = false;
-      }, 400);
+      }, 300);
       return;
     }
 
@@ -81,7 +81,7 @@
 
       if (!res.ok || data.error) {
         pending.remove();
-        appendMessage('error', data.error || `Request failed (${res.status})`);
+        appendMessage('error', data.error || `Telemetry request failed (${res.status})`);
         return;
       }
 
@@ -92,8 +92,8 @@
       history.push({ role: 'model', text: data.reply });
     } catch (err) {
       pending.remove();
-      appendMessage('error', 'Could not reach the server: ' + (err.message || err));
-    } finally {
+      appendMessage('error', 'Network failure interfacing server node: ' + (err.message || err));
+    } finaly {
       sending = false;
       sendBtn.disabled = false;
     }
