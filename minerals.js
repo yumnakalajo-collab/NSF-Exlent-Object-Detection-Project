@@ -9,6 +9,7 @@
   let selectedObject = '';
   let lastOptions = [];
   let loading = false;
+  let clearOptionsTimer = null;
 
   const SOURCE_LINKS = [
     { label: 'USGS Critical Minerals', url: 'https://www.usgs.gov/mission-areas/national-minerals-information-center/critical-minerals' },
@@ -17,6 +18,33 @@
     { label: 'Call2Recycle locator', url: 'https://www.call2recycle.org/locator/' },
     { label: 'Earth911 recycling search', url: 'https://search.earth911.com/' },
   ];
+
+  const SENSOR_OPTIONS = {
+    landsat: {
+      name: 'Landsat 8/9',
+      bands: ['Visible', 'NIR', 'SWIR 1.6 um', 'SWIR 2.2 um', 'Thermal'],
+      bestFor: 'regional screening of iron oxides, vegetation masking, burn scars, and broad SWIR alteration patterns.',
+      limits: 'Landsat pixels are broad and bands are wide, so it cannot confirm a specific critical mineral by itself.',
+    },
+    sentinel2: {
+      name: 'Sentinel-2',
+      bands: ['Visible', 'Red edge', 'NIR', 'SWIR 1.6 um', 'SWIR 2.2 um'],
+      bestFor: 'higher-detail surface mapping, vegetation masking, iron oxide color, and some clay or moisture-related SWIR patterns.',
+      limits: 'Sentinel-2 is useful for mapping alteration zones, but most critical minerals still need field or lab confirmation.',
+    },
+    aster: {
+      name: 'ASTER',
+      bands: ['Visible/NIR', 'SWIR', 'Thermal infrared'],
+      bestFor: 'mineral exploration because its SWIR and thermal bands help separate clays, carbonates, silica, and iron oxides.',
+      limits: 'ASTER is stronger for alteration minerals than for directly identifying metals inside ore minerals.',
+    },
+    hyperspectral: {
+      name: 'Hyperspectral',
+      bands: ['Many narrow VNIR bands', 'Many narrow SWIR bands'],
+      bestFor: 'detailed spectral fingerprinting of minerals with narrow absorption features, especially clays, rare-earth minerals, and alteration halos.',
+      limits: 'Hyperspectral data is powerful, but weathering, vegetation, mixing, and surface cover can still hide minerals.',
+    },
+  };
 
   const FALLBACK_MINERALS = {
     battery: [
@@ -46,8 +74,100 @@
     ],
   };
 
+  const SUPPLY_LOCATIONS = {
+    lithium: [
+      location('Australia', -25.3, 133.8, 'Hard-rock spodumene mining'),
+      location('Chile', -23.4, -68.8, 'Atacama brines'),
+      location('Argentina', -24.8, -66.9, 'Lithium Triangle brines'),
+      location('China', 32.1, 90.2, 'Brines and hard-rock supply'),
+    ],
+    cobalt: [
+      location('DR Congo', -3.4, 23.6, 'Largest mined cobalt source'),
+      location('Indonesia', -2.5, 121.0, 'Nickel-cobalt laterites'),
+      location('Russia', 61.5, 105.3, 'Nickel-cobalt deposits'),
+      location('Australia', -25.3, 133.8, 'Cobalt resources'),
+    ],
+    nickel: [
+      location('Indonesia', -2.5, 121.0, 'Largest mined nickel source'),
+      location('Philippines', 12.9, 122.0, 'Laterite nickel mining'),
+      location('Russia', 61.5, 105.3, 'Sulfide nickel deposits'),
+      location('Canada', 56.1, -106.3, 'Sulfide nickel districts'),
+      location('Australia', -25.3, 133.8, 'Nickel resources'),
+    ],
+    graphite: [
+      location('China', 35.9, 104.2, 'Dominant natural graphite producer'),
+      location('Mozambique', -18.7, 35.5, 'Natural graphite mining'),
+      location('Madagascar', -18.8, 46.9, 'Flake graphite deposits'),
+      location('Brazil', -14.2, -51.9, 'Natural graphite production'),
+    ],
+    manganese: [
+      location('South Africa', -30.6, 22.9, 'Kalahari manganese field'),
+      location('Gabon', -0.8, 11.6, 'High-grade manganese ore'),
+      location('Australia', -25.3, 133.8, 'Manganese mining'),
+      location('Ghana', 7.9, -1.0, 'Manganese ore production'),
+      location('Brazil', -14.2, -51.9, 'Manganese resources'),
+    ],
+    copper: [
+      location('Chile', -30.0, -71.0, 'Largest mined copper source'),
+      location('Peru', -9.2, -75.0, 'Major Andean copper mines'),
+      location('DR Congo', -10.8, 26.0, 'Central African Copperbelt'),
+      location('China', 35.9, 104.2, 'Mining and refining'),
+      location('United States', 37.1, -113.5, 'Southwest copper districts'),
+    ],
+    tantalum: [
+      location('DR Congo', -2.8, 28.0, 'Coltan/tantalite supply'),
+      location('Rwanda', -1.9, 29.9, 'Tantalum concentrate production'),
+      location('Brazil', -5.8, -60.2, 'Tantalum-bearing pegmatites'),
+      location('Australia', -25.3, 133.8, 'Tantalum resources'),
+    ],
+    tin: [
+      location('China', 25.0, 102.7, 'Major tin mining and smelting'),
+      location('Indonesia', -2.2, 106.1, 'Bangka-Belitung tin belt'),
+      location('Myanmar', 21.9, 96.1, 'Tin mining districts'),
+      location('Peru', -14.0, -70.0, 'Andean tin deposits'),
+      location('Bolivia', -17.0, -66.0, 'Historic tin belt'),
+    ],
+    gold: [
+      location('China', 35.9, 104.2, 'Major gold producer'),
+      location('Australia', -25.3, 133.8, 'Major gold producer'),
+      location('Russia', 61.5, 105.3, 'Major gold producer'),
+      location('Canada', 56.1, -106.3, 'Major gold districts'),
+      location('United States', 39.0, -116.6, 'Nevada and western districts'),
+    ],
+    'rare earth elements': [
+      location('China', 36.8, 105.0, 'Largest rare earth mining and separation hub'),
+      location('United States', 35.5, -115.5, 'Mountain Pass rare earth mine'),
+      location('Australia', -25.3, 133.8, 'Rare earth mining and projects'),
+      location('Myanmar', 22.0, 98.0, 'Heavy rare earth ion-adsorption supply'),
+    ],
+    'platinum group metals': [
+      location('South Africa', -25.5, 28.5, 'Bushveld Complex'),
+      location('Russia', 69.3, 88.2, 'Norilsk nickel-PGM deposits'),
+      location('Zimbabwe', -19.0, 29.8, 'Great Dyke PGM deposits'),
+      location('Canada', 46.5, -81.0, 'Sudbury and related districts'),
+    ],
+    aluminum: [
+      location('Australia', -17.5, 145.0, 'Bauxite mining'),
+      location('Guinea', 10.4, -10.9, 'Major bauxite reserves'),
+      location('China', 35.9, 104.2, 'Bauxite and aluminum refining'),
+      location('Brazil', -3.5, -52.0, 'Amazon bauxite districts'),
+      location('India', 21.0, 82.0, 'Bauxite mining'),
+    ],
+    iron: [
+      location('Australia', -22.3, 118.0, 'Pilbara iron ore'),
+      location('Brazil', -19.6, -43.9, 'Minas Gerais and Carajas'),
+      location('China', 41.0, 119.0, 'Iron ore mining'),
+      location('India', 21.0, 82.0, 'Iron ore mining'),
+      location('Russia', 55.0, 60.0, 'Iron ore districts'),
+    ],
+  };
+
   function mineral(name, usage, location, criticality, why, spectralProfile, bestWavelengths) {
     return { name, usage, location, criticality, why, spectralProfile, bestWavelengths };
+  }
+
+  function location(name, lat, lon, note) {
+    return { name, lat, lon, note };
   }
 
   function escapeHtml(str) {
@@ -64,6 +184,30 @@
 
   function mayContainBattery(label) {
     return /battery|cell|phone|laptop|tablet|camera|remote|watch|headphone|earbud|power|ev|vehicle|car|drone|toy|speaker/.test(String(label || '').toLowerCase());
+  }
+
+  function handleDetectionOptions(detections) {
+    const hasDetections = Array.isArray(detections) && detections.length > 0;
+
+    if (hasDetections) {
+      if (clearOptionsTimer) {
+        clearTimeout(clearOptionsTimer);
+        clearOptionsTimer = null;
+      }
+      updateOptions(detections);
+      return;
+    }
+
+    if (!lastOptions.length) {
+      updateOptions([]);
+      return;
+    }
+
+    if (clearOptionsTimer) return;
+    clearOptionsTimer = setTimeout(() => {
+      clearOptionsTimer = null;
+      updateOptions([]);
+    }, 4000);
   }
 
   function updateOptions(detections) {
@@ -154,25 +298,101 @@
         x: [24, 72, 48, 29, 68][i] || 50,
         y: [28, 36, 56, 72, 76][i] || 50,
       })),
-      battery: mayContainBattery(label) ? batteryGuidance() : null,
+      battery: mayContainBattery(label) ? batteryGuidance(label) : null,
       sources: SOURCE_LINKS,
     });
   }
 
-  function batteryGuidance() {
+  function inferBatteryType(label) {
+    const text = String(label || '').toLowerCase();
+    if (/car battery|lead acid|lead-acid|motorcycle battery/.test(text)) return 'lead-acid';
+    if (/button|coin|key fob|hearing aid|calculator/.test(text)) return 'button-cell';
+    if (/remote|alkaline|aa|aaa|flashlight|toy|clock|mouse|keyboard/.test(text)) return 'alkaline';
+    if (/car|vehicle|truck|ev|scooter|bike|drone|phone|laptop|tablet|camera|watch|headphone|earbud|speaker|power bank|powerbank/.test(text)) return 'lithium-ion';
+    return 'general rechargeable';
+  }
+
+  function batteryGuidance(label) {
+    const type = inferBatteryType(label || selectedObject);
+    const sharedWhere = [
+      'Search nearby drop-off sites with Call2Recycle or Earth911.',
+      'Many electronics retailers, municipal household hazardous waste sites, and campus e-waste programs accept batteries or battery-containing devices.',
+    ];
+
+    if (type === 'alkaline') {
+      return {
+        applies: true,
+        type,
+        why: 'This object most likely uses alkaline cells. Alkaline batteries contain zinc, manganese dioxide, and steel, so recycling can recover materials and keep large quantities of household batteries out of regular waste.',
+        how: [
+          'Remove AA, AAA, C, D, or 9V alkaline cells only if the battery compartment opens normally.',
+          'Store cells in a dry container. Tape 9V terminals so they cannot touch metal or other batteries.',
+          'Use a household battery recycling box or local hazardous waste collection site if your community collects alkaline batteries.',
+          'Bag leaking batteries separately and ask your local waste program how to handle them.',
+        ],
+        where: sharedWhere,
+      };
+    }
+
+    if (type === 'button-cell') {
+      return {
+        applies: true,
+        type,
+        why: 'This object may use a button or coin cell. These small batteries can be dangerous if swallowed and may contain lithium, silver oxide, zinc-air, or alkaline chemistries.',
+        how: [
+          'Remove the button cell only if the compartment is designed to open safely.',
+          'Tape both sides of loose coin or button cells before storage or drop-off.',
+          'Keep them away from children and pets while waiting to recycle them.',
+          'Use a battery drop-off site, pharmacy collection option, electronics retailer, or household hazardous waste program.',
+        ],
+        where: sharedWhere,
+      };
+    }
+
+    if (type === 'lead-acid') {
+      return {
+        applies: true,
+        type,
+        why: 'This object may use a lead-acid battery. Lead-acid batteries are highly recyclable but contain lead and sulfuric acid, so they need dedicated handling.',
+        how: [
+          'Keep the battery upright and avoid touching any leaking fluid.',
+          'Take it to an auto-parts store, battery retailer, repair shop, or household hazardous waste site.',
+          'Do not place lead-acid batteries in curbside recycling or trash.',
+          'If cracked or leaking, contact your local hazardous waste program before transporting it.',
+        ],
+        where: [
+          'Auto-parts stores and battery retailers commonly accept lead-acid batteries.',
+          ...sharedWhere,
+        ],
+      };
+    }
+
+    if (type === 'lithium-ion') {
+      return {
+        applies: true,
+        type,
+        why: 'This object most likely uses a lithium-ion battery. Lithium-ion batteries can start fires if crushed, punctured, or short-circuited, and recycling can recover lithium, cobalt, nickel, copper, steel, and graphite.',
+        how: [
+          'Do not put lithium-ion batteries or battery-containing electronics in curbside trash or standard recycling bins.',
+          'Power the device down. Remove the battery only if the object is designed for safe battery removal.',
+          'Cover exposed terminals with clear tape and keep batteries cool, dry, and separated from metal objects.',
+          'Recycle the whole device at an electronics collection site if the battery is built in.',
+          'For damaged, swollen, leaking, hot, or smoking batteries, contact your city or county household hazardous waste program before moving them.',
+        ],
+        where: sharedWhere,
+      };
+    }
+
     return {
       applies: true,
-      why: 'Batteries can start fires if crushed or punctured, and recycling recovers valuable materials such as lithium, cobalt, nickel, copper, steel, and graphite.',
+      type,
+      why: 'Battery recycling reduces fire risk, keeps battery chemicals out of regular waste streams, and recovers useful metals.',
       how: [
-        'Do not put rechargeable lithium-ion batteries in curbside trash or standard recycling bins.',
+        'Identify the battery type from the label or product manual when possible.',
         'Cover exposed terminals with clear tape and keep batteries cool, dry, and separated from metal objects.',
-        'Use a battery drop-off site for loose rechargeable batteries. If the battery is built into a device, recycle the whole device at an electronics or battery collection site.',
-        'For damaged, swollen, leaking, or hot batteries, contact your city or county household hazardous waste program before transporting them.',
+        'Use a battery or electronics drop-off site instead of curbside trash.',
       ],
-      where: [
-        'Search nearby drop-off sites with Call2Recycle or Earth911.',
-        'Many electronics retailers, municipal household hazardous waste sites, and campus e-waste programs accept rechargeable batteries.',
-      ],
+      where: sharedWhere,
     };
   }
 
@@ -186,6 +406,7 @@
       why: m.why || 'Important to performance, supply chain, or recyclability.',
       spectralProfile: m.spectralProfile || 'No simple diagnostic reflectance profile is available for this material in this object form.',
       bestWavelengths: m.bestWavelengths || 'Use lab confirmation when reflectance is not diagnostic.',
+      supplyLocations: normalizeSupplyLocations(m.supplyLocations, m.name),
     }));
 
     return {
@@ -195,7 +416,7 @@
       mapLocations: Array.isArray(report.mapLocations) && report.mapLocations.length
         ? report.mapLocations
         : safeMinerals.slice(0, 5).map((m, i) => ({ label: m.name, location: m.location, x: 25 + i * 12, y: 35 + (i % 3) * 16 })),
-      battery: report.battery && report.battery.applies ? report.battery : (mayContainBattery(report.object || selectedObject) ? batteryGuidance() : null),
+      battery: report.battery && report.battery.applies ? report.battery : (mayContainBattery(report.object || selectedObject) ? batteryGuidance(report.object || selectedObject) : null),
       sources: Array.isArray(report.sources) && report.sources.length ? report.sources : SOURCE_LINKS,
     };
   }
@@ -220,6 +441,7 @@
         </div>
         <p><strong>Use:</strong> ${escapeHtml(m.usage)}</p>
         <p><strong>Why critical:</strong> ${escapeHtml(m.why)}</p>
+        ${renderMineralWorldMap(m)}
       </article>
     `).join('');
 
@@ -232,6 +454,7 @@
     `).join('');
 
     const spectralVisuals = report.minerals.map((m) => renderSpectralVisual(m)).join('');
+    const remoteSensingHtml = renderRemoteSensingMode(report, 'sentinel2');
 
     const mapNodes = report.mapLocations.slice(0, 7).map((node, index) => {
       const x = clamp(Number(node.x) || 50 + index * 5, 14, 86);
@@ -247,7 +470,7 @@
     const batteryHtml = report.battery ? `
       <div class="panel">
         <h2>Battery recycling</h2>
-        <p class="report-subtitle">${escapeHtml(report.battery.why || batteryGuidance().why)}</p>
+        <p class="report-subtitle">${escapeHtml(report.battery.why || batteryGuidance(report.object).why)}</p>
         <ul class="recycling-list">
           ${(report.battery.how || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
           ${(report.battery.where || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
@@ -299,6 +522,8 @@
         </table>
       </div>
 
+      ${remoteSensingHtml}
+
       ${batteryHtml}
 
       <div class="panel">
@@ -306,10 +531,203 @@
         <ul class="source-list">${sourcesHtml}</ul>
       </div>
     `;
+
+    bindSensorControls(report);
   }
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
+  }
+
+  function normalizeSupplyLocations(locations, mineralName) {
+    const provided = Array.isArray(locations)
+      ? locations
+          .filter((item) => item && typeof item.name === 'string')
+          .map((item) => ({
+            name: item.name,
+            lat: Number(item.lat),
+            lon: Number(item.lon),
+            note: item.note || item.role || item.description || '',
+          }))
+          .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lon))
+      : [];
+
+    if (provided.length) return provided.slice(0, 6);
+    return fallbackSupplyLocations(mineralName);
+  }
+
+  function fallbackSupplyLocations(mineralName) {
+    const text = String(mineralName || '').toLowerCase();
+    const key = Object.keys(SUPPLY_LOCATIONS).find((name) => text.includes(name));
+    if (key) return SUPPLY_LOCATIONS[key];
+    if (text.includes('pgm') || text.includes('platinum') || text.includes('palladium') || text.includes('rhodium')) {
+      return SUPPLY_LOCATIONS['platinum group metals'];
+    }
+    if (text.includes('rare earth')) return SUPPLY_LOCATIONS['rare earth elements'];
+    return [
+      location('China', 35.9, 104.2, 'Major mineral processing hub'),
+      location('Australia', -25.3, 133.8, 'Major mining country'),
+      location('United States', 39.8, -98.6, 'Domestic resources and recycling'),
+    ];
+  }
+
+  function renderMineralWorldMap(mineralData) {
+    const locations = normalizeSupplyLocations(mineralData.supplyLocations, mineralData.name);
+    const pins = locations.map((place, index) => {
+      const x = lonToX(place.lon);
+      const y = latToY(place.lat);
+      const labelX = clamp(x + 2.5, 4, 84);
+      const labelY = clamp(y - 2.5 + (index % 2) * 7, 8, 93);
+      return `
+        <circle class="supply-pin ${index > 2 ? 'secondary' : ''}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" />
+        <text class="supply-label" x="${labelX.toFixed(1)}" y="${labelY.toFixed(1)}">${escapeHtml(place.name)}</text>
+      `;
+    }).join('');
+
+    const notes = locations.slice(0, 4).map((place) => `${place.name}: ${place.note}`).join(' | ');
+
+    return `
+      <div class="mineral-map">
+        <p class="mineral-map-title">Major global source regions</p>
+        <svg viewBox="0 0 100 56" role="img" aria-label="World map showing major source regions for ${escapeHtml(mineralData.name)}">
+          <line class="map-gridline" x1="0" y1="28" x2="100" y2="28" />
+          <line class="map-gridline" x1="25" y1="0" x2="25" y2="56" />
+          <line class="map-gridline" x1="50" y1="0" x2="50" y2="56" />
+          <line class="map-gridline" x1="75" y1="0" x2="75" y2="56" />
+          <path class="map-land" d="M7 14 C12 8 22 8 28 13 C31 17 30 23 25 25 C19 29 13 27 9 23 C6 20 4 17 7 14 Z" />
+          <path class="map-land" d="M20 29 C25 30 30 35 31 42 C29 49 23 53 19 49 C16 44 14 36 20 29 Z" />
+          <path class="map-land" d="M38 12 C46 8 57 10 64 15 C66 20 61 24 53 24 C45 25 37 21 35 17 C34 15 35 13 38 12 Z" />
+          <path class="map-land" d="M48 24 C55 23 61 28 61 36 C60 45 54 51 48 48 C43 42 42 33 45 27 C46 26 47 25 48 24 Z" />
+          <path class="map-land" d="M60 12 C72 7 88 10 94 18 C98 24 92 31 80 30 C70 29 61 25 58 19 C57 16 58 14 60 12 Z" />
+          <path class="map-land" d="M76 37 C82 34 91 38 93 44 C91 51 82 53 76 49 C72 45 72 40 76 37 Z" />
+          ${pins}
+        </svg>
+        <p class="supply-note">${escapeHtml(notes)}</p>
+      </div>
+    `;
+  }
+
+  function lonToX(lon) {
+    return clamp(((Number(lon) + 180) / 360) * 100, 2, 98);
+  }
+
+  function latToY(lat) {
+    return clamp(((90 - Number(lat)) / 180) * 56, 3, 53);
+  }
+
+  function renderRemoteSensingMode(report, activeSensorKey) {
+    const sensor = SENSOR_OPTIONS[activeSensorKey] || SENSOR_OPTIONS.sentinel2;
+    const tabs = Object.entries(SENSOR_OPTIONS).map(([key, option]) => `
+      <button class="sensor-tab" type="button" data-sensor="${key}" aria-pressed="${key === activeSensorKey ? 'true' : 'false'}">${escapeHtml(option.name)}</button>
+    `).join('');
+
+    return `
+      <div class="panel sensor-panel">
+        <h2>Choose a remote sensing sensor</h2>
+        <div class="sensor-tabs" role="group" aria-label="Remote sensing sensor options">${tabs}</div>
+        <div id="sensor-readout">${renderSensorReadout(report, activeSensorKey, sensor)}</div>
+      </div>
+    `;
+  }
+
+  function renderSensorReadout(report, sensorKey, sensor = SENSOR_OPTIONS[sensorKey]) {
+    const cards = report.minerals.map((mineralData) => {
+      const result = sensorDetectability(mineralData.name, sensorKey);
+      return `
+        <article class="sensor-card">
+          <div class="sensor-card-head">
+            <h3>${escapeHtml(mineralData.name)}</h3>
+            <span class="detectability ${escapeHtml(result.className)}">${escapeHtml(result.rating)}</span>
+          </div>
+          <p><strong>What this sensor can do:</strong> ${escapeHtml(result.note)}</p>
+          <p><strong>Best target:</strong> ${escapeHtml(result.target)}</p>
+        </article>
+      `;
+    }).join('');
+
+    return `
+      <div class="sensor-summary">
+        <h3>${escapeHtml(sensor.name)}</h3>
+        <p><strong>Best for:</strong> ${escapeHtml(sensor.bestFor)}</p>
+        <p><strong>Limit:</strong> ${escapeHtml(sensor.limits)}</p>
+        <div class="sensor-band-list">
+          ${sensor.bands.map((band) => `<span class="sensor-band">${escapeHtml(band)}</span>`).join('')}
+        </div>
+      </div>
+      <div class="sensor-mineral-grid">${cards}</div>
+    `;
+  }
+
+  function bindSensorControls(report) {
+    const readout = document.getElementById('sensor-readout');
+    const buttons = Array.from(document.querySelectorAll('.sensor-tab'));
+    if (!readout || !buttons.length) return;
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = button.dataset.sensor || 'sentinel2';
+        buttons.forEach((item) => {
+          item.setAttribute('aria-pressed', String(item === button));
+        });
+        readout.innerHTML = renderSensorReadout(report, key, SENSOR_OPTIONS[key] || SENSOR_OPTIONS.sentinel2);
+      });
+    });
+  }
+
+  function sensorDetectability(mineralName, sensorKey) {
+    const mineral = String(mineralName || '').toLowerCase();
+    const isHyperspectral = sensorKey === 'hyperspectral';
+    const isAster = sensorKey === 'aster';
+    const isSentinel = sensorKey === 'sentinel2';
+    const isLandsat = sensorKey === 'landsat';
+
+    if (/iron|aluminum|copper/.test(mineral)) {
+      if (isAster || isHyperspectral) {
+        return detectability('Easy', 'easy', 'Can map iron oxides, clay alteration, carbonates, and SWIR alteration minerals that often point to mineralized zones.', 'visible/NIR iron color plus SWIR alteration around 2.2-2.35 um');
+      }
+      return detectability('Possible', 'possible', 'Can screen for broad iron oxide color and some SWIR alteration, but mixed pixels make exact mineral ID uncertain.', 'visible/NIR color and broad SWIR bands');
+    }
+
+    if (/lithium|nickel|cobalt|manganese/.test(mineral)) {
+      if (isHyperspectral) {
+        return detectability('Possible', 'possible', 'Can look for alteration minerals, laterites, clays, and hydration features associated with deposits, but it usually cannot see the metal directly.', 'SWIR hydroxyl/water absorptions near 1.4, 1.9, 2.2, and 2.3 um');
+      }
+      if (isAster) {
+        return detectability('Possible', 'possible', 'Useful for mapping alteration and laterite patterns around deposits; confirmation still needs field sampling or lab work.', 'ASTER SWIR alteration bands and iron oxide ratios');
+      }
+      return detectability('Hard', 'hard', 'Broad multispectral bands can show surface color or alteration clues, but they are not specific enough to identify this mineral directly.', 'regional alteration screening rather than direct detection');
+    }
+
+    if (/rare earth/.test(mineral)) {
+      if (isHyperspectral) {
+        return detectability('Possible', 'possible', 'Narrow VNIR absorptions from some rare-earth-bearing minerals may be detectable with high spectral resolution.', 'narrow VNIR features around roughly 580-900 nm');
+      }
+      return detectability('Hard', 'hard', 'Most multispectral sensors do not have bands narrow enough for rare-earth spectral fingerprints.', 'general alteration mapping only');
+    }
+
+    if (/tin/.test(mineral)) {
+      if (isAster || isHyperspectral) {
+        return detectability('Possible', 'possible', 'Can map alteration minerals associated with tin systems, but cassiterite itself usually needs XRF or lab confirmation.', 'SWIR alteration near 2.2-2.35 um');
+      }
+      return detectability('Hard', 'hard', 'Can only provide broad geologic context, not direct tin identification.', 'regional context and iron/clay anomalies');
+    }
+
+    if (/graphite|tantalum|gold|platinum|palladium|rhodium/.test(mineral)) {
+      if (isHyperspectral && /graphite/.test(mineral)) {
+        return detectability('Hard', 'hard', 'Graphite can appear dark and absorptive, but many surfaces look similar; Raman or field sampling is still needed.', 'low reflectance targets plus field verification');
+      }
+      return detectability('Lab only', 'lab', 'This material does not have a reliable simple satellite reflectance signature in typical object or ore forms.', 'XRF, Raman, LIBS, assay, or field sampling');
+    }
+
+    if (isHyperspectral || isAster) {
+      return detectability('Possible', 'possible', 'Can search for alteration minerals and surface patterns related to deposits, but direct identification is uncertain.', 'VNIR/SWIR alteration features');
+    }
+
+    return detectability('Hard', 'hard', 'This sensor is best for broad screening, not confirmation of a specific critical mineral.', 'regional color, vegetation, and alteration patterns');
+  }
+
+  function detectability(rating, className, note, target) {
+    return { rating, className, note, target };
   }
 
   function renderSpectralVisual(mineralData) {
@@ -608,8 +1026,8 @@
   els.analyzeBtn.addEventListener('click', analyzeSelected);
 
   window.addEventListener('detectionsupdated', (event) => {
-    updateOptions(event.detail && event.detail.detections);
+    handleDetectionOptions(event.detail && event.detail.detections);
   });
 
-  updateOptions(window.__latestDetections || []);
+  handleDetectionOptions(window.__latestDetections || []);
 })();

@@ -49,8 +49,9 @@ export async function onRequestPost(context) {
     'Return a concise, educational critical-minerals report for this object.',
     'Use accurate science language. Do not invent exact certainty for a detected object; say "likely" when appropriate.',
     'Include minerals or elements that are relevant to the object, their use in the object, where they are located inside the object, criticality, why they are critical, spectral profiles, and best wavelengths or methods to observe them.',
+    'For each mineral, include up to six major global supply locations as {name, lat, lon, note}; use approximate country or mining-district coordinates.',
     'For spectral profiles, distinguish reflectance absorption features from lab emission/XRF/Raman methods when reflectance is not diagnostic.',
-    'If the object is a battery or commonly contains a battery, include battery recycling guidance: how, why, and where users in the United States can look for drop-off options.',
+    'If the object is a battery or commonly contains a battery, infer the likely battery chemistry when possible, such as lithium-ion, alkaline, button-cell, or lead-acid. Include recycling guidance specific to that battery type: how, why, and where users in the United States can look for drop-off options.',
   ].join('\n');
 
   const geminiRequestBody = {
@@ -65,7 +66,7 @@ export async function onRequestPost(context) {
           text:
             'You are a critical-minerals educator for a live object-detection website. ' +
             'Return only valid JSON matching this schema: ' +
-            '{"object":"string","summary":"string","minerals":[{"name":"string","usage":"string","location":"string","criticality":"High|Medium|Low","why":"string","spectralProfile":"string","bestWavelengths":"string"}],"mapLocations":[{"label":"string","location":"string","x":number,"y":number}],"battery":{"applies":boolean,"why":"string","how":["string"],"where":["string"]},"sources":[{"label":"string","url":"string"}]}. ' +
+            '{"object":"string","summary":"string","minerals":[{"name":"string","usage":"string","location":"string","criticality":"High|Medium|Low","why":"string","spectralProfile":"string","bestWavelengths":"string","supplyLocations":[{"name":"string","lat":number,"lon":number,"note":"string"}]}],"mapLocations":[{"label":"string","location":"string","x":number,"y":number}],"battery":{"applies":boolean,"type":"lithium-ion|alkaline|button-cell|lead-acid|general rechargeable","why":"string","how":["string"],"where":["string"]},"sources":[{"label":"string","url":"string"}]}. ' +
             'Map x and y are percentages from 10 to 90 for label placement. ' +
             'Use 3 to 6 minerals. Keep each field short but specific. Include source links from USGS, EPA, Call2Recycle, or Earth911 where relevant.',
         },
